@@ -174,10 +174,10 @@ if __name__ == "__main__":
     
     while True:
         try:
-            print("🤖 Bot is starting cleanly...")
-            # infinity_polling automated restarts ko smoothly handle karta hai
-            asyncio.run(bot.infinity_polling(timeout=60, long_polling_timeout=30))
+            print("🤖 Bot ekdum clean start ho raha hai...")
+            # Extra arguments hata diye hain, ab crash nahi hoga
+            asyncio.run(bot.infinity_polling(timeout=60))
         except Exception as e:
-            print(f"⚠️ Polling connection conflict: {e}")
-            print("⏳ Waiting 20 seconds for Telegram to clear old session...")
-            time.sleep(20) # Yeh Railway ko thanda rakhega
+            print(f"⚠️ Polling connection issue: {e}")
+            print("⏳ 20 seconds wait kar rahe hain taaki session clear ho jaye...")
+            time.sleep(20)
