@@ -105,7 +105,7 @@ async def create_insta_account(chat_id, base_email):
 
             await bot.send_message(chat_id, f"✍️ Details fill kar raha hoon...\nUser: {username}")
 
-            # --- NAYA MOBILE-VIEW AND EMAIL SWITCH LOGIC (FIXED SYNTAX) ---
+            # --- MOBILE-VIEW AND EMAIL SWITCH LOGIC (ULTRA SAFE) ---
             try:
                 # Pehle check karte hain agar direct email box dikh jaye
                 email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"]', timeout=5000)
@@ -116,7 +116,6 @@ async def create_insta_account(chat_id, base_email):
                     # Agar nahi mila, toh matlab mobile view par "Sign up with email" par click karna padega
                     await bot.send_message(chat_id, "🔗 Mobile view detected! Switching to Email sign-up tab...")
                     
-                    # Ek-ek karke text dhoondhega bina comma ke loche ke
                     try:
                         switch_to_email_btn = await page.wait_for_selector('text="Sign up with email"', timeout=5000)
                     except Exception:
@@ -126,15 +125,14 @@ async def create_insta_account(chat_id, base_email):
                             switch_to_email_btn = await page.wait_for_selector('button:has-text("email")', timeout=5000)
                     
                     await switch_to_email_btn.click()
-                    await asyncio.sleep(2) # Chhota sa pause tab change hone ke liye
+                    await asyncio.sleep(3) # Load hone ke liye thoda zyada pause diya
                     
-                    # Ab firse email box dhoondte hain
-                    email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"], input[type="text"]', timeout=10000)
+                    # --- SUDHAAR: Ab page par koi bhi text input ho, usey first() se utha lo ---
+                    email_input = await page.wait_for_selector('input[type="text"], input', timeout=10000)
                     await email_input.click()
                     await human_type(email_input, base_email)
                     
                 except Exception as select_err:
-                    # Agar ab bhi fail ho toh hi screenshot bhejega
                     screenshot_path = f"error_{chat_id}.png"
                     await page.screenshot(path=screenshot_path, full_page=True)
                     with open(screenshot_path, "rb") as photo:
@@ -167,7 +165,7 @@ async def create_insta_account(chat_id, base_email):
                 await browser.close()
                 return
 
-            await bot.send_message(chat_id, "📩 Code bhej diya hai lala! Jaldi se sirf OTP code likh kar bhejo.")
+            await bot.send_message(chat_id, "📩 Code bhej diya hai lala! Jaldi se sirf OTP code likh kar behavi.")
 
             event = asyncio.Event()
             session_tracker[chat_id] = {"event": event, "otp": None}
