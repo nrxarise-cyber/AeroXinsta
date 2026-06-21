@@ -105,7 +105,7 @@ async def create_insta_account(chat_id, base_email):
 
             await bot.send_message(chat_id, f"✍️ Details fill kar raha hoon...\nUser: {username}")
 
-            # --- NAYA MOBILE-VIEW AND EMAIL SWITCH LOGIC ---
+            # --- NAYA MOBILE-VIEW AND EMAIL SWITCH LOGIC (FIXED SYNTAX) ---
             try:
                 # Pehle check karte hain agar direct email box dikh jaye
                 email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"]', timeout=5000)
@@ -116,11 +116,15 @@ async def create_insta_account(chat_id, base_email):
                     # Agar nahi mila, toh matlab mobile view par "Sign up with email" par click karna padega
                     await bot.send_message(chat_id, "🔗 Mobile view detected! Switching to Email sign-up tab...")
                     
-                    # Alag-alag tarike se text ya button dhoond raha hai (Taaki miss na ho)
-                    switch_to_email_btn = await page.wait_for_selector(
-                        'role=button[name=/Sign up with email/i], text="Sign up with email", text="Use email instead"', 
-                        timeout=8000
-                    )
+                    # Ek-ek karke text dhoondhega bina comma ke loche ke
+                    try:
+                        switch_to_email_btn = await page.wait_for_selector('text="Sign up with email"', timeout=5000)
+                    except Exception:
+                        try:
+                            switch_to_email_btn = await page.wait_for_selector('text="Use email instead"', timeout=5000)
+                        except Exception:
+                            switch_to_email_btn = await page.wait_for_selector('button:has-text("email")', timeout=5000)
+                    
                     await switch_to_email_btn.click()
                     await asyncio.sleep(2) # Chhota sa pause tab change hone ke liye
                     
