@@ -44,7 +44,7 @@ async def create_insta_account(chat_id, base_email):
             else:
                 proxy_config = {"server": current_proxy if current_proxy.startswith("http") else f"http://{current_proxy}"}
 
-        await bot.send_message(chat_id, "🌐 Phase 2: Launching Browser...")
+        await bot.send_message(chat_id, "🌐 Phase 2: Launching Browser with Anti-Bot Bypasses...")
         
         async with async_playwright() as p:
             browser = await p.chromium.launch(
@@ -52,45 +52,66 @@ async def create_insta_account(chat_id, base_email):
                 args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--single-process"]
             )
             
+            # Real Human Browser Environment Spoofing
             context = await browser.new_context(
-                user_agent=USER_AGENT, proxy=proxy_config,
-                viewport={"width": 360, "height": 740}, is_mobile=True, has_touch=True,
-                locale="en-US", timezone_id="Asia/Kolkata"
+                user_agent=USER_AGENT,
+                proxy=proxy_config,
+                viewport={"width": 360, "height": 740},
+                is_mobile=True,
+                has_touch=True,
+                locale="en-US",
+                timezone_id="Asia/Kolkata",
+                extra_http_headers={
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Sec-Fetch-User": "?1",
+                    "Upgrade-Insecure-Requests": "1"
+                }
             )
             
             page = await context.new_page()
-            await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
-
-            await bot.send_message(chat_id, "🚀 Phase 3: Opening Instagram...")
-            await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="networkidle", timeout=45000)
-            await asyncio.sleep(5)
-
-            # --- STEP 1: LAYOUT DETECTION & EMAIL ENTER KARNA (FIXED LOGIC) ---
             
-            # Pehle check karo agar 'Use email instead' ya 'Email' tab dikh raha hai (Layout B)
+            # Anti-Fingerprinting Script Injection
+            await page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                window.chrome = { runtime: {} };
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+            """)
+
+            await bot.send_message(chat_id, "🚀 Phase 3: Stepping into Instagram Main Page...")
+            # Pehle main site par hit marenge taaki bot detection trigger na ho
+            await page.goto("https://www.instagram.com/", wait_until="networkidle", timeout=45000)
+            await asyncio.sleep(random.uniform(3.0, 5.0))
+            
+            await bot.send_message(chat_id, "🔗 Navigating to Registration Form...")
+            await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="networkidle", timeout=45000)
+            await asyncio.sleep(random.uniform(4.0, 6.0))
+
+            # --- STEP 1: LAYOUT DETECTION & EMAIL FILLING ---
             try:
-                # Text content matches for "Use email instead" or "Sign up with email" or exact "Email" text button
+                # Layout B Check (Button base)
                 switch_to_email_btn = page.locator('button:has-text("email"), [role="button"]:has-text("email"), text=/Use email instead|Sign up with email/i').first
-                
-                # Agar button screen par mojud hai toh click karega, nahi toh 3s me skip karega
                 if await switch_to_email_btn.is_visible(timeout=3000):
                     await bot.send_message(chat_id, "🔄 Email tab view select kar raha hoon...")
                     await switch_to_email_btn.click()
                     await asyncio.sleep(2)
             except Exception:
-                pass # Agar button nahi mila matlab hum already direct input fields wale page par hain (Layout A)
+                pass 
 
-            # Ab input target karo (Dono cases me se kisi ek selector ko pakka dhoond lega)
             await bot.send_message(chat_id, "✍️ Email address fill kar raha hoon...")
-            email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"], input[type="text"], input[name="email"]', timeout=10000)
+            # Multi-selector with extended timeout (15 Seconds)
+            email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"], input[type="text"], input[name="email"], input[type="email"]', timeout=15000)
             await email_input.click()
             await human_type(email_input, base_email)
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
 
-            # Gmail daalne ke baad Next button dabana
+            # Click Next
             next_btn = page.locator('button[type="submit"], button:has-text("Next"), form button').first
             await next_btn.click()
-            await asyncio.sleep(5)
+            await asyncio.sleep(6)
 
             # --- STEP 2: OTP SELECTION & WAITING ---
             await bot.send_message(chat_id, "📩 Code bhej diya hai lala! Jaldi se sirf OTP code likh kar bhejo.")
@@ -110,9 +131,10 @@ async def create_insta_account(chat_id, base_email):
                 return
 
             # OTP Input fill karna
-            otp_input = await page.wait_for_selector('input[name="email_confirmation_code"], input[type="number"], input[pattern="[0-9]*"], input', timeout=10000)
+            otp_input = await page.wait_for_selector('input[name="email_confirmation_code"], input[type="number"], input[pattern="[0-9]*"], input', timeout=12000)
             await otp_input.click()
             await human_type(otp_input, otp_received)
+            await asyncio.sleep(1)
             
             next_btn = page.locator('button[type="submit"], button:has-text("Next"), form button').first
             await next_btn.click()
@@ -125,6 +147,7 @@ async def create_insta_account(chat_id, base_email):
             pass_input = await page.wait_for_selector('input[type="password"], input[name="password"]', timeout=10000)
             await pass_input.click()
             await human_type(pass_input, password)
+            await asyncio.sleep(1)
             
             next_btn = page.locator('button[type="submit"], button:has-text("Next"), form button').first
             await next_btn.click()
@@ -148,6 +171,7 @@ async def create_insta_account(chat_id, base_email):
                 await page.keyboard.press("Control+A")
                 await page.keyboard.press("Backspace")
                 await human_type(user_input, username)
+                await asyncio.sleep(1)
             except Exception:
                 pass
 
