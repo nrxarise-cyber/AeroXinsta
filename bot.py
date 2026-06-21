@@ -1,19 +1,35 @@
 import asyncio
 import random
 import os
-import telebot
+from telebot.async_telebot import AsyncTeleBot
 from playwright.async_api import async_playwright
 
 # Railway ke Environment Variables se token uthayenge
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-bot = telebot.TeleBot(BOT_TOKEN)
-
-# Apni 4G/5G proxies yahan daalna mat bhoolna
-PROXY_POOL = [
-    # "http://username:password@ip:port"
-]
+bot = AsyncTeleBot(BOT_TOKEN)
 
 USER_AGENT = "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+
+# Global dictionary to keep track of waiting OTPs per chat session
+waiting_for_otp = {}
+
+def load_proxies_from_file():
+    """Repo ke andar se proxies.txt file read karne ke liye function"""
+    file_path = "proxies.txt"
+    proxies = []
+    
+    if os.path.exists(file_path):
+        with open(file_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                # Khali lines ya comment (#) ko skip karne ke liye
+                if line and not line.startswith("#"):
+                    proxies.append(line)
+        print(f"📦 Repo se total {len(proxies)} proxies load ho gayi hain.")
+    else:
+        print("⚠️ proxies.txt file nahi mili! Bina proxy ke chal raha hai.")
+        
+    return proxies
 
 async def human_type(element, text):
     for char in text:
@@ -22,10 +38,15 @@ async def human_type(element, text):
 
 async def create_insta_account(chat_id, base_email):
     async with async_playwright() as p:
-        current_proxy = random.choice(PROXY_POOL) if PROXY_POOL else None
+        # Har baar function chalne par file se fresh proxies load karega
+        proxy_pool = load_proxies_from_file()
+        current_proxy = random.choice(proxy_pool) if proxy_pool else None
         proxy_config = {"server": current_proxy} if current_proxy else None
 
-        bot.send_message(chat_id, "🤖 Railway server par browser start ho raha hai...")
+        if current_proxy:
+            await bot.send_message(chat_id, f"🤖 Proxy Connected: {current_proxy.split('@')[-1] if '@' in current_proxy else current_proxy}")
+        else:
+            await bot.send_message(chat_id, "⚠️ Warning: Bina proxy ke browser start ho raha hai!")
 
         # Server par headless=True hi chalega
         browser = await p.chromium.launch(headless=True)
@@ -45,14 +66,13 @@ async def create_insta_account(chat_id, base_email):
             await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="networkidle", timeout=60000)
             await asyncio.sleep(3)
 
-            email_to_use = base_email
             username = "bhai_ka_acc_" + str(random.randint(10000, 99999))
             password = "KhatarnakPass#" + str(random.randint(100, 999))
 
-            bot.send_message(chat_id, f"✍️ Details fill kar raha hoon...\nUser: {username}")
+            await bot.send_message(chat_id, f"✍️ Details fill kar raha hoon...\nUser: {username}")
 
             email_input = await page.wait_for_selector('input[name="emailOrPhone"]', timeout=15000)
-            await human_type(email_input, email_to_use)
+            await human_type(email_input, base_email)
 
             name_input = await page.wait_for_selector('input[name="fullName"]')
             await human_type(name_input, "Rockstar Bhai")
@@ -66,24 +86,24 @@ async def create_insta_account(chat_id, base_email):
             signup_btn = await page.wait_for_selector('button[type="submit"]')
             await signup_btn.click()
             
-            bot.send_message(chat_id, "📩 Insta ne OTP bhej diya! Jaldi se reply mein sirf OTP code likh kar bhejo.")
+            await bot.send_message(chat_id, "📩 Insta ne OTP bhej diya! Jaldi se sirf OTP code likh kar bhejo.")
 
-            otp_received = None
+            # Session register karo ki hum OTP ka wait kar rahe hain
+            waiting_for_otp[chat_id] = None
             
-            # OTP capture karne ke liye handler
-            @bot.message_handler(func=lambda msg: msg.chat.id == chat_id and msg.text.isdigit())
-            def handle_otp(msg):
-                nonlocal otp_received
-                otp_received = msg.text
-
-            # 60 seconds ka wait
+            otp_received = None
             for _ in range(60):
-                if otp_received:
+                if waiting_for_otp.get(chat_id) is not None:
+                    otp_received = waiting_for_otp[chat_id]
                     break
                 await asyncio.sleep(1)
 
+            # Session clear karo
+            if chat_id in waiting_for_otp:
+                del waiting_for_otp[chat_id]
+
             if not otp_received:
-                bot.send_message(chat_id, "❌ Time khatam! Tumne OTP nahi diya.")
+                await bot.send_message(chat_id, "❌ Time khatam! Tumne OTP nahi diya.")
                 await browser.close()
                 return
 
@@ -94,21 +114,29 @@ async def create_insta_account(chat_id, base_email):
             await confirm_btn.click()
             
             await asyncio.sleep(8)
-            bot.send_message(chat_id, f"🔥 Boom! Account Taiyar:\n👤 User: {username}\n🔑 Pass: {password}")
+            await bot.send_message(chat_id, f"🔥 Boom! Account Taiyar:\n👤 User: {username}\n🔑 Pass: {password}")
 
         except Exception as e:
-            bot.send_message(chat_id, f"⚠️ Error aa gaya lala: {str(e)}")
+            await bot.send_message(chat_id, f"⚠️ Error aa gaya lala: {str(e)}")
         
-        await browser.close()
+        finally:
+            await browser.close()
 
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, "Railway System Online! Gmail bhejo, account banate hain.")
+async def send_welcome(message):
+    await bot.reply_to(message, "Railway System Online! Gmail bhejo, account banate hain.")
+
+@bot.message_handler(func=lambda message: message.chat.id in waiting_for_otp and message.text.isdigit())
+async def capture_otp(message):
+    waiting_for_otp[message.chat.id] = message.text.strip()
+    await bot.reply_to(message, "🔄 OTP mil gaya! Fill kar raha hoon...")
 
 @bot.message_handler(func=lambda message: "@" in message.text)
-def start_automation(message):
+async def start_automation(message):
     email = message.text.strip()
-    asyncio.run(create_insta_account(message.chat.id, email))
+    # Task ko background mein daal rahe hain taaki bot crash ya freeze na ho
+    asyncio.create_task(create_insta_account(message.chat.id, email))
 
-print("Bot is polling on Railway...")
-bot.polling(none_stop=True)
+if __name__ == "__main__":
+    print("Bot is polling on Railway with Async Architecture...")
+    asyncio.run(bot.polling(non_stop=True))
