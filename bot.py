@@ -7,216 +7,87 @@ from playwright.async_api import async_playwright
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = AsyncTeleBot(BOT_TOKEN)
 
-USER_AGENT = "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36"
-
-session_tracker = {}
-
-def load_proxies_from_file():
-    file_path = "proxies.txt"
-    proxies = []
-    if os.path.exists(file_path):
-        with open(file_path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    proxies.append(line)
-    return proxies
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 async def human_type(element, text):
     for char in text:
         await element.type(char)
-        await asyncio.sleep(random.uniform(0.15, 0.35))
+        await asyncio.sleep(random.uniform(0.15, 0.3))
 
 async def create_insta_account(chat_id, base_email):
-    page = None
     browser = None
     try:
-        await bot.send_message(chat_id, "⚙️ Phase 1: Reading configuration data...")
-        proxy_pool = load_proxies_from_file()
-        current_proxy = random.choice(proxy_pool) if proxy_pool else None
-        proxy_config = None
-        
-        if current_proxy:
-            current_proxy = current_proxy.strip()
-            if len(current_proxy.split(":")) == 4:
-                ip, port, user, password = current_proxy.split(":")
-                proxy_config = {"server": f"http://{ip}:{port}", "username": user, "password": password}
-            else:
-                proxy_config = {"server": current_proxy if current_proxy.startswith("http") else f"http://{current_proxy}"}
-
-        await bot.send_message(chat_id, "🌐 Phase 2: Launching Browser with Anti-Bot Bypasses...")
+        await bot.send_message(chat_id, "🚀 Railway Worker: Initializing Headless Engine...")
         
         async with async_playwright() as p:
             browser = await p.chromium.launch(
-                headless=True,
-                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--single-process"]
+                headless=True, 
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu"
+                ]
             )
             
-            # Real Human Browser Environment Spoofing
             context = await browser.new_context(
                 user_agent=USER_AGENT,
-                proxy=proxy_config,
-                viewport={"width": 360, "height": 740},
-                is_mobile=True,
-                has_touch=True,
-                locale="en-US",
-                timezone_id="Asia/Kolkata",
-                extra_http_headers={
-                    "Accept-Language": "en-US,en;q=0.9",
-                    "Sec-Fetch-Dest": "document",
-                    "Sec-Fetch-Mode": "navigate",
-                    "Sec-Fetch-Site": "none",
-                    "Sec-Fetch-User": "?1",
-                    "Upgrade-Insecure-Requests": "1"
-                }
+                viewport={"width": 1280, "height": 720},
+                locale="en-US"
             )
+            
+            await context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            """)
             
             page = await context.new_page()
             
-            # Anti-Fingerprinting Script Injection
-            await page.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                window.chrome = { runtime: {} };
-                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
-            """)
-
-            await bot.send_message(chat_id, "🚀 Phase 3: Stepping into Instagram Main Page...")
-            # Pehle main site par hit marenge taaki bot detection trigger na ho
-            await page.goto("https://www.instagram.com/", wait_until="networkidle", timeout=45000)
-            await asyncio.sleep(random.uniform(3.0, 5.0))
-            
-            await bot.send_message(chat_id, "🔗 Navigating to Registration Form...")
             await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="networkidle", timeout=45000)
-            await asyncio.sleep(random.uniform(4.0, 6.0))
+            await asyncio.sleep(4)
 
-            # --- STEP 1: LAYOUT DETECTION & EMAIL FILLING ---
+            target_selector = 'input[name="emailOrPhone"], input[name="email"]'
+            
             try:
-                # Layout B Check (Button base)
-                switch_to_email_btn = page.locator('button:has-text("email"), [role="button"]:has-text("email"), text=/Use email instead|Sign up with email/i').first
-                if await switch_to_email_btn.is_visible(timeout=3000):
-                    await bot.send_message(chat_id, "🔄 Email tab view select kar raha hoon...")
-                    await switch_to_email_btn.click()
-                    await asyncio.sleep(2)
+                # Target input ka wait karega
+                await page.wait_for_selector(target_selector, state="visible", timeout=25000)
             except Exception:
-                pass 
+                # --- SCREENSHOT LOGIC FOR RAILWAY ---
+                # Agar timeout aaya, toh turant screenshot capture karega
+                ss_path = f"error_{chat_id}.png"
+                await page.screenshot(path=ss_path, full_page=True)
+                
+                # Telegram par screenshot send karna
+                with open(ss_path, "rb") as photo:
+                    await bot.send_photo(
+                        chat_id, 
+                        photo, 
+                        caption="🚨 Timeout Error! Instagram field load nahi hua. Server par ye screen dikh rahi hai."
+                    )
+                
+                # File delete karna taaki Railway ka space na bhare
+                if os.path.exists(ss_path):
+                    os.remove(ss_path)
+                    
+                page_title = await page.title()
+                raise Exception(f"Instagram blocked the server IP. Page Title: '{page_title}'")
 
-            await bot.send_message(chat_id, "✍️ Email address fill kar raha hoon...")
-            # Multi-selector with extended timeout (15 Seconds)
-            email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"], input[type="text"], input[name="email"], input[type="email"]', timeout=15000)
-            await email_input.click()
-            await human_type(email_input, base_email)
+            # Agar field mil gaya toh normal flow chalega
+            email_field = page.locator(target_selector).first
+            await email_field.click()
+            await human_type(email_field, base_email)
             await asyncio.sleep(2)
 
-            # Click Next
-            next_btn = page.locator('button[type="submit"], button:has-text("Next"), form button').first
+            next_btn = page.locator('button[type="submit"], button:has-text("Next")').first
             await next_btn.click()
-            await asyncio.sleep(6)
-
-            # --- STEP 2: OTP SELECTION & WAITING ---
-            await bot.send_message(chat_id, "📩 Code bhej diya hai lala! Jaldi se sirf OTP code likh kar bhejo.")
             
-            event = asyncio.Event()
-            session_tracker[chat_id] = {"event": event, "otp": None}
-
-            try:
-                await asyncio.wait_for(event.wait(), timeout=60.0)
-                otp_received = session_tracker[chat_id]["otp"]
-            except asyncio.TimeoutError:
-                otp_received = None
-
-            if not otp_received:
-                await bot.send_message(chat_id, "❌ Time khatam! Tumne OTP nahi diya.")
-                await browser.close()
-                return
-
-            # OTP Input fill karna
-            otp_input = await page.wait_for_selector('input[name="email_confirmation_code"], input[type="number"], input[pattern="[0-9]*"], input', timeout=12000)
-            await otp_input.click()
-            await human_type(otp_input, otp_received)
-            await asyncio.sleep(1)
-            
-            next_btn = page.locator('button[type="submit"], button:has-text("Next"), form button').first
-            await next_btn.click()
-            await asyncio.sleep(6)
-
-            # --- STEP 3: PASSWORD SET KARNA ---
-            await bot.send_message(chat_id, "🔑 Password set kar raha hoon...")
-            password = "KhatarnakPass#" + str(random.randint(111, 999))
-            
-            pass_input = await page.wait_for_selector('input[type="password"], input[name="password"]', timeout=10000)
-            await pass_input.click()
-            await human_type(pass_input, password)
-            await asyncio.sleep(1)
-            
-            next_btn = page.locator('button[type="submit"], button:has-text("Next"), form button').first
-            await next_btn.click()
-            await asyncio.sleep(6)
-
-            # --- STEP 4: BIRTHDAY SET KARNA ---
-            await bot.send_message(chat_id, "🎂 Birthday page bypass kar raha hoon...")
-            try:
-                next_btn = page.locator('button[type="submit"], button:has-text("Next"), form button').first
-                await next_btn.click()
-                await asyncio.sleep(6)
-            except Exception:
-                pass
-
-            # --- STEP 5: USERNAME SET KARNA ---
-            await bot.send_message(chat_id, "👤 Username handle add kar raha hoon...")
-            username = "bhai_ka_acc_" + str(random.randint(10000, 99999))
-            try:
-                user_input = await page.wait_for_selector('input[name="username"], input[type="text"]', timeout=5000)
-                await user_input.click()
-                await page.keyboard.press("Control+A")
-                await page.keyboard.press("Backspace")
-                await human_type(user_input, username)
-                await asyncio.sleep(1)
-            except Exception:
-                pass
-
-            # Final Sign Up / Next Button
-            try:
-                signup_btn = page.locator('button[type="submit"], button:has-text("Sign up"), button:has-text("Next")').first
-                await signup_btn.click()
-                await asyncio.sleep(10)
-            except Exception:
-                pass
-
-            if "challenge" in page.url or "checkpoint" in page.url:
-                await bot.send_message(chat_id, "⚠️ Account flagged! Change proxy IP pool rotation settings.")
-                await browser.close()
-                return
-
-            await bot.send_message(chat_id, f"🔥 Boom! Account Taiyar:\n👤 User: {username}\n🔑 Pass: {password}")
-            await browser.close()
+            await bot.send_message(chat_id, f"📩 Target configured for {base_email}.")
 
     except Exception as e:
-        try:
-            if page:
-                screenshot_path = f"error_final_{chat_id}.png"
-                await page.screenshot(path=screenshot_path, full_page=True)
-                with open(screenshot_path, "rb") as photo:
-                    await bot.send_photo(chat_id, photo, caption=f"🚨 Engine Ruled Out Here:\n`{str(e)}`")
-                if os.path.exists(screenshot_path): 
-                    os.remove(screenshot_path)
-            else:
-                await bot.send_message(chat_id, f"🚨 CRITICAL SYSTEM ERROR (Browser Not Initiated):\n`{str(e)}`")
-        except Exception:
-            await bot.send_message(chat_id, f"🚨 CRITICAL SYSTEM ERROR:\n`{str(e)}`")
+        await bot.send_message(chat_id, f"🚨 Railway Exec Error:\n`{str(e)}`")
     finally:
-        session_tracker.pop(chat_id, None)
-
-@bot.message_handler(commands=['start'])
-async def send_welcome(message):
-    await bot.reply_to(message, "Railway Engine Configured! Gmail bhejo setup load karte hain.")
-
-@bot.message_handler(func=lambda message: message.chat.id in session_tracker and message.text.isdigit())
-async def capture_otp(message):
-    chat_id = message.chat.id
-    session_tracker[chat_id]["otp"] = message.text.strip()
-    session_tracker[chat_id]["event"].set()
-    await bot.reply_to(message, "🔄 OTP Processing...")
+        if browser:
+            await browser.close()
 
 @bot.message_handler(func=lambda message: "@" in message.text)
 async def start_automation(message):
@@ -224,5 +95,4 @@ async def start_automation(message):
     asyncio.create_task(create_insta_account(message.chat.id, email))
 
 if __name__ == "__main__":
-    print("🤖 Bot initialization process live...")
-    asyncio.run(bot.infinity_polling(timeout=60))
+    asyncio.run(bot.infinity_polling())
