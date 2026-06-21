@@ -29,18 +29,14 @@ async def human_type(element, text):
         await asyncio.sleep(random.uniform(0.15, 0.35))
 
 async def create_insta_account(chat_id, base_email):
-    # Pure scope ko wrapper me liya hai taaki setup failure par notification mil sake
     try:
         await bot.send_message(chat_id, "⚙️ Phase 1: Reading configuration data...")
         proxy_pool = load_proxies_from_file()
         current_proxy = random.choice(proxy_pool) if proxy_pool else None
         
         proxy_config = None
-        
-        # --- SMART PROXY AUTH PARSING ---
         if current_proxy:
             current_proxy = current_proxy.strip()
-            # Handle standard format -> ip:port:user:pass
             if len(current_proxy.split(":")) == 4:
                 ip, port, user, password = current_proxy.split(":")
                 proxy_config = {
@@ -48,7 +44,6 @@ async def create_insta_account(chat_id, base_email):
                     "username": user,
                     "password": password
                 }
-            # Handle reverse string structure -> user:pass@ip:port
             elif "@" in current_proxy and ":" in current_proxy:
                 try:
                     auth_part, ip_part = current_proxy.split("@")
@@ -76,7 +71,7 @@ async def create_insta_account(chat_id, base_email):
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-gpu",
-                    "--single-process" # Highly recommended container context optimization flag
+                    "--single-process"
                 ]
             )
             
@@ -100,17 +95,30 @@ async def create_insta_account(chat_id, base_email):
             """)
 
             await bot.send_message(chat_id, "🚀 Phase 4: Fetching Instagram register endpoint...")
-            await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="commit", timeout=25000)
-            await asyncio.sleep(4)
+            
+            # --- SUDHAAR 1: commit se badal kar networkidle kiya taaki load sahi ho ---
+            await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="networkidle", timeout=45000)
+            await asyncio.sleep(5)
 
             username = "bhai_ka_acc_" + str(random.randint(10000, 99999))
             password = "KhatarnakPass#" + str(random.randint(100, 999))
 
             await bot.send_message(chat_id, f"✍️ Details fill kar raha hoon...\nUser: {username}")
 
-            email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[type="text"]', timeout=15000)
-            await email_input.click()
-            await human_type(email_input, base_email)
+            try:
+                # --- SUDHAAR 2: Dono me se koi bhi input mile, select kar le ---
+                email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"]', timeout=20000)
+                await email_input.click()
+                await human_type(email_input, base_email)
+            except Exception as select_err:
+                # --- SUDHAAR 3: Agar fail ho toh live screenshot bhejega bot par ---
+                screenshot_path = f"error_{chat_id}.png"
+                await page.screenshot(path=screenshot_path, full_page=True)
+                with open(screenshot_path, "rb") as photo:
+                    await bot.send_photo(chat_id, photo, caption="❌ Input box nahi mila. Screen par yeh dikh raha hai!")
+                if os.path.exists(screenshot_path):
+                    os.remove(screenshot_path)
+                raise select_err
 
             name_input = await page.wait_for_selector('input[name="fullName"]', timeout=10000)
             await name_input.click()
@@ -167,23 +175,3 @@ async def create_insta_account(chat_id, base_email):
         await bot.send_message(chat_id, f"🚨 ENGINE FAILURE SYSTEM REPORT:\n`{str(e)}`", parse_mode="Markdown")
     finally:
         session_tracker.pop(chat_id, None)
-
-@bot.message_handler(commands=['start'])
-async def send_welcome(message):
-    await bot.reply_to(message, "Railway Engine Configured! Gmail bhejo setup load karte hain.")
-
-@bot.message_handler(func=lambda message: message.chat.id in session_tracker and message.text.isdigit())
-async def capture_otp(message):
-    chat_id = message.chat.id
-    session_tracker[chat_id]["otp"] = message.text.strip()
-    session_tracker[chat_id]["event"].set()
-    await bot.reply_to(message, "🔄 OTP Processing...")
-
-@bot.message_handler(func=lambda message: "@" in message.text)
-async def start_automation(message):
-    email = message.text.strip()
-    asyncio.create_task(create_insta_account(message.chat.id, email))
-
-if __name__ == "__main__":
-    print("🤖 Bot initialization process live...")
-    asyncio.run(bot.infinity_polling(timeout=60))
