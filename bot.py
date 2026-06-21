@@ -25,7 +25,7 @@ def load_proxies_from_file():
 async def human_type(element, text):
     for char in text:
         await element.type(char)
-        await asyncio.sleep(random.uniform(0.15, 0.35))  # Thoda zyada natural delay
+        await asyncio.sleep(random.uniform(0.15, 0.35))
 
 async def create_insta_account(chat_id, base_email):
     async with async_playwright() as p:
@@ -35,9 +35,9 @@ async def create_insta_account(chat_id, base_email):
 
         await bot.send_message(chat_id, "🤖 Engine start ho raha hai...")
 
-        # STEALTH ARGS: Browser ko undetectable banane ke liye extra arguments
+        # TIP: Agar local pe run kar rahe ho toh headless=False karke check karo
         browser = await p.chromium.launch(
-            headless=True,
+            headless=True, 
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
@@ -60,7 +60,6 @@ async def create_insta_account(chat_id, base_email):
         
         page = await context.new_page()
         
-        # Super Stealth: Webdriver detect hone se bachane ke liye advanced bypass
         await page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
             window.chrome = { runtime: {} };
@@ -70,44 +69,43 @@ async def create_insta_account(chat_id, base_email):
 
         try:
             await bot.send_message(chat_id, "🌐 Instagram Signup Page par jaa raha hoon...")
-            await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(random.uniform(4, 6)) # Natural wait
+            
+            # Timeout ko 30000 (30s) kiya taaki bot infinite freeze na ho
+            await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="networkidle", timeout=30000)
+            await asyncio.sleep(random.uniform(4, 6))
 
             username = "bhai_ka_acc_" + str(random.randint(10000, 99999))
             password = "KhatarnakPass#" + str(random.randint(100, 999))
 
             await bot.send_message(chat_id, f"✍️ Details fill kar raha hoon...\nUser: {username}")
 
-            # Instagram ke badalte hue selectors ke liye backup selectors use kiye hain
             email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[type="text"]', timeout=20000)
-            await email_input.click() # Pehle click karo jaise insan karta hai
+            await email_input.click()
             await asyncio.sleep(0.5)
             await human_type(email_input, base_email)
 
-            name_input = await page.wait_for_selector('input[name="fullName"]')
+            name_input = await page.wait_for_selector('input[name="fullName"]', timeout=10000)
             await name_input.click()
             await asyncio.sleep(0.5)
             await human_type(name_input, "Rockstar Bhai")
 
-            user_input = await page.wait_for_selector('input[name="username"]')
+            user_input = await page.wait_for_selector('input[name="username"]', timeout=10000)
             await user_input.click()
             await asyncio.sleep(0.5)
             await human_type(user_input, username)
 
-            pass_input = await page.wait_for_selector('input[name="password"]')
+            pass_input = await page.wait_for_selector('input[name="password"]', timeout=10000)
             await pass_input.click()
             await asyncio.sleep(0.5)
             await human_type(pass_input, password)
 
             await asyncio.sleep(2)
             
-            # Submit button dhoondhne ka advanced tareeka
             signup_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Sign up")', timeout=15000)
             await signup_btn.click()
             
             await asyncio.sleep(5)
             
-            # Check if blocked or challenged right away
             if "challenge" in page.url or "checkpoint" in page.url:
                 await bot.send_message(chat_id, "⚠️ Oops! Instagram ne Robot/Captcha challenge de diya. Proxy change karni padegi.")
                 await browser.close()
@@ -136,21 +134,21 @@ async def create_insta_account(chat_id, base_email):
             await human_type(otp_input, otp_received)
             await asyncio.sleep(1.5)
             
-            confirm_btn = await page.wait_for_selector('button[type="submit"]')
+            confirm_btn = await page.wait_for_selector('button[type="submit"]', timeout=10000)
             await confirm_btn.click()
             
             await asyncio.sleep(10)
             await bot.send_message(chat_id, f"🔥 Boom! Account Taiyar:\n👤 User: {username}\n🔑 Pass: {password}")
 
         except Exception as e:
-            # Agar fail ho jaye toh screen ka screenshot lelo samajhne ke liye (Railway par debug ke liye best hai)
+            # Screenshot fallback basic message ke sath
             try:
                 await page.screenshot(path=f"error_{chat_id}.png")
                 with open(f"error_{chat_id}.png", "rb") as photo:
-                    await bot.send_photo(chat_id, photo, caption=f"⚠️ Error ke waqt screen aisi dikh rahi thi: {str(e)}")
+                    await bot.send_photo(chat_id, photo, caption=f"⚠️ Dikkat aayi lala: {str(e)}")
                 os.remove(f"error_{chat_id}.png")
-            except:
-                await bot.send_message(chat_id, f"⚠️ Error aa gaya lala: {str(e)}")
+            except Exception as screenshot_error:
+                await bot.send_message(chat_id, f"⚠️ Error aa gaya lala aur screenshot bhi nahi mila: {str(e)}")
         
         finally:
             await browser.close()
@@ -171,13 +169,10 @@ async def start_automation(message):
 
 if __name__ == "__main__":
     import time
-    
     while True:
         try:
             print("🤖 Bot ekdum clean start ho raha hai...")
-            # Extra arguments hata diye hain, ab crash nahi hoga
             asyncio.run(bot.infinity_polling(timeout=60))
         except Exception as e:
             print(f"⚠️ Polling connection issue: {e}")
-            print("⏳ 20 seconds wait kar rahe hain taaki session clear ho jaye...")
             time.sleep(20)
