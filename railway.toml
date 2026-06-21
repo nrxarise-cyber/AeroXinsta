@@ -1,8 +1,5 @@
 [build]
-buildCommand = "pip install -r requirements.txt && playwright install --with-deps chromium"
+buildCommand = "pip install -r requirements.txt"
 
 [deploy]
-startCommand = "python bot.py"
-
-[variables]
-RAILPACK_PYTHON_VERSION = "3.12"
+startCommand = "playwright install chromium --with-deps && python bot.py"
