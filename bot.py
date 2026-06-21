@@ -5,8 +5,6 @@ import sys
 import re
 from telebot.async_telebot import AsyncTeleBot
 from playwright.async_api import async_playwright
-# FIX: stealth module se specific stealth_sync function import kiya
-from playwright_stealth import stealth_sync
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
@@ -74,14 +72,32 @@ async def create_insta_account(chat_id, base_email):
                 context = await browser.new_context(
                     user_agent=USER_AGENT,
                     viewport={"width": 1280, "height": 720},
-                    locale="en-US"
+                    locale="en-US",
+                    timezone_id="America/New_York",
+                    permissions=["geolocation"]
                 )
                 
+                # Native Anti-Bot Bypass: Scripts ko direct browser context me inject karna
+                await context.add_init_script("""
+                    # 1. Webdriver protection bypass
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                    
+                    # 2. Chrome plugins emulation
+                    window.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {}, app: {} };
+                    
+                    # 3. Permissions fix
+                    const originalQuery = navigator.permissions.query;
+                    navigator.permissions.query = (parameters) => (
+                        parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                    );
+                    
+                    # 4. Languages override
+                    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                """)
+                
                 page = await context.new_page()
-                
-                # FIX: stealth_sync use kiya jo module callable issue ko crash nahi hone deta
-                stealth_sync(page)
-                
                 await bot.send_message(chat_id, "🌐 Loading registration gateway...")
                 
                 try:
