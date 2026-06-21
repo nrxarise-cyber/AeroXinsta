@@ -105,17 +105,14 @@ async def create_insta_account(chat_id, base_email):
 
             await bot.send_message(chat_id, f"✍️ Details fill kar raha hoon...\nUser: {username}")
 
-            # --- MOBILE-VIEW AND EMAIL SWITCH LOGIC (ULTRA SAFE) ---
+            # --- MOBILE-VIEW AND EMAIL SWITCH LOGIC ---
             try:
-                # Pehle check karte hain agar direct email box dikh jaye
                 email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"]', timeout=5000)
                 await email_input.click()
                 await human_type(email_input, base_email)
             except Exception:
                 try:
-                    # Agar nahi mila, toh matlab mobile view par "Sign up with email" par click karna padega
                     await bot.send_message(chat_id, "🔗 Mobile view detected! Switching to Email sign-up tab...")
-                    
                     try:
                         switch_to_email_btn = await page.wait_for_selector('text="Sign up with email"', timeout=5000)
                     except Exception:
@@ -125,9 +122,8 @@ async def create_insta_account(chat_id, base_email):
                             switch_to_email_btn = await page.wait_for_selector('button:has-text("email")', timeout=5000)
                     
                     await switch_to_email_btn.click()
-                    await asyncio.sleep(3) # Load hone ke liye thoda zyada pause diya
+                    await asyncio.sleep(4) # Load hone ke liye thoda aur backup time diya
                     
-                    # --- SUDHAAR: Ab page par koi bhi text input ho, usey first() se utha lo ---
                     email_input = await page.wait_for_selector('input[type="text"], input', timeout=10000)
                     await email_input.click()
                     await human_type(email_input, base_email)
@@ -141,21 +137,43 @@ async def create_insta_account(chat_id, base_email):
                         os.remove(screenshot_path)
                     raise select_err
 
-            # --- BAAKI DETAILS FILL KARNA ---
-            name_input = await page.wait_for_selector('input[name="fullName"]', timeout=10000)
-            await name_input.click()
-            await human_type(name_input, "Rockstar Bhai")
+            # --- GMAIL SUBMIT KARNE KE LIYE NEXT BUTTON (IF REQUIRED) ---
+            try:
+                # Agar email daalne ke baad "Next" daba kar details wala page aata hai
+                next_btn = await page.wait_for_selector('button:has-text("Next"), button[type="submit"]', timeout=5000)
+                await next_btn.click()
+                await asyncio.sleep(4)
+            except Exception:
+                # Agar direct usi page par details hain toh bina click aage badhega
+                pass
 
-            user_input = await page.wait_for_selector('input[name="username"]', timeout=10000)
-            await user_input.click()
-            await human_type(user_input, username)
+            # --- BAAKI DETAILS FILL KARNA (ULTRA SAFE LOGIC) ---
+            try:
+                # Full Name dhoondne ke alag alag tarike
+                name_input = await page.wait_for_selector('input[name="fullName"], input[placeholder*="Name"], input[placeholder*="name"]', timeout=12000)
+                await name_input.click()
+                await human_type(name_input, "Rockstar Bhai")
 
-            pass_input = await page.wait_for_selector('input[name="password"]', timeout=10000)
-            await pass_input.click()
-            await human_type(pass_input, password)
+                user_input = await page.wait_for_selector('input[name="username"], input[placeholder*="Username"], input[placeholder*="username"]', timeout=8000)
+                await user_input.click()
+                await human_type(user_input, username)
+
+                pass_input = await page.wait_for_selector('input[name="password"], input[type="password"]', timeout=8000)
+                await pass_input.click()
+                await human_type(pass_input, password)
+                
+            except Exception as details_err:
+                # Agar details wale inputs me se kuch na mile toh screenshot bheje
+                screenshot_path = f"error_details_{chat_id}.png"
+                await page.screenshot(path=screenshot_path, full_page=True)
+                with open(screenshot_path, "rb") as photo:
+                    await bot.send_photo(chat_id, photo, caption="❌ Name/Pass box nahi mila. Screen check karo lala!")
+                if os.path.exists(screenshot_path):
+                    os.remove(screenshot_path)
+                raise details_err
 
             await asyncio.sleep(2)
-            signup_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Sign up")', timeout=15000)
+            signup_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Sign up"), button:has-text("Next")', timeout=15000)
             await signup_btn.click()
             
             await asyncio.sleep(5)
@@ -165,7 +183,7 @@ async def create_insta_account(chat_id, base_email):
                 await browser.close()
                 return
 
-            await bot.send_message(chat_id, "📩 Code bhej diya hai lala! Jaldi se sirf OTP code likh kar behavi.")
+            await bot.send_message(chat_id, "📩 Code bhej diya hai lala! Jaldi se sirf OTP code likh kar bhejo.")
 
             event = asyncio.Event()
             session_tracker[chat_id] = {"event": event, "otp": None}
@@ -181,12 +199,12 @@ async def create_insta_account(chat_id, base_email):
                 await browser.close()
                 return
 
-            otp_input = await page.wait_for_selector('input[name="email_confirmation_code"], input[type="num"]', timeout=15000)
+            otp_input = await page.wait_for_selector('input[name="email_confirmation_code"], input[type="num"], input[placeholder*="Code"]', timeout=15000)
             await otp_input.click()
             await human_type(otp_input, otp_received)
             await asyncio.sleep(1.5)
             
-            confirm_btn = await page.wait_for_selector('button[type="submit"]', timeout=10000)
+            confirm_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Next")', timeout=10000)
             await confirm_btn.click()
             
             await asyncio.sleep(10)
