@@ -6,7 +6,6 @@ import re
 from telebot.async_telebot import AsyncTeleBot
 from playwright.async_api import async_playwright
 
-# Environment Variables fetching
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 if not BOT_TOKEN:
@@ -19,7 +18,6 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 PROXY_FILE = "proxies.txt"
 
 def get_parsed_proxy():
-    """proxies.txt file se random proxy utha kar usey Playwright format me parse karta hai"""
     if not os.path.exists(PROXY_FILE):
         return None
         
@@ -30,7 +28,6 @@ def get_parsed_proxy():
         return None
         
     raw_proxy = random.choice(proxies)
-    
     match = re.match(r'(?:https?://)?(?:([^:]+):([^@]+)@)?([^:]+):(\d+)', raw_proxy)
     
     if match:
@@ -44,7 +41,6 @@ def get_parsed_proxy():
     return {"server": raw_proxy}
 
 async def human_type(element, text):
-    """Insano ki tarah thoda ruk-ruk kar type karne ke liye"""
     try:
         for char in text:
             await element.type(char)
@@ -54,9 +50,9 @@ async def human_type(element, text):
 
 async def create_insta_account(chat_id, base_email):
     ss_path = f"ss_{chat_id}.png"
+    await bot.send_message(chat_id, "🚀 [Worker] Initializing environment modules...")
+    
     try:
-        await bot.send_message(chat_id, "🚀 [Railway Worker] Engine spinning up with strict network layers...")
-        
         async with async_playwright() as p:
             launch_args = {
                 "headless": True,
@@ -69,116 +65,122 @@ async def create_insta_account(chat_id, base_email):
                 ]
             }
             
-            # PROXY LOADING LOGIC
             proxy_config = get_parsed_proxy()
             if proxy_config:
                 launch_args["proxy"] = proxy_config
                 clean_server = proxy_config["server"].split('@')[-1]
-                await bot.send_message(chat_id, f"🌐 Proxy Authenticated & Loaded: `{clean_server}`")
+                await bot.send_message(chat_id, f"🌐 Proxy Loaded: `{clean_server}`")
             else:
-                await bot.send_message(chat_id, f"⚠️ Warning: '{PROXY_FILE}' empty/missing. Running on default host IP.")
+                await bot.send_message(chat_id, "⚠️ Running on default host IP (No proxy).")
 
-            browser = await p.chromium.launch(**launch_args)
-            
-            context = await browser.new_context(
-                user_agent=USER_AGENT,
-                viewport={"width": 1280, "height": 720},
-                locale="en-US"
-            )
-            
-            await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
-            page = await context.new_page()
-            
-            await bot.send_message(chat_id, "🌐 Launching Instagram sign-up gateway...")
-            
-            try:
-                await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="networkidle", timeout=60000)
-            except Exception as net_err:
-                raise Exception(f"Network/Proxy Error: Page failed to load. Proxy dead ho sakti hai. Details: {net_err}")
+            # Context Manager ka use kiya taaki browser har haal me close ho
+            async with await p.chromium.launch(**launch_args) as browser:
+                context = await browser.new_context(
+                    user_agent=USER_AGENT,
+                    viewport={"width": 1280, "height": 720},
+                    locale="en-US"
+                )
                 
-            await asyncio.sleep(4)
-
-            # --- 📱 MOBILE LAYOUT DETECTION & INSTANT EMAIL SWITCH ---
-            email_instead_btn = page.locator('button:has-text("Sign up with email instead"), span:has-text("Sign up with email")').first
-            if await email_instead_btn.is_visible():
-                await bot.send_message(chat_id, "📱 Mobile UI/Phone layout detected. Switching to Email interface...")
-                await email_instead_btn.click()
-                await asyncio.sleep(2)
-
-            target_selector = 'input[name="emailOrPhone"], input[name="email"], input[type="text"]'
-            
-            try:
-                await page.wait_for_selector(target_selector, state="visible", timeout=20000)
-            except Exception:
-                # 🛠️ FIX 1: Timeout aur full_page control lagaya taaki fonts par na atke
+                await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+                page = await context.new_page()
+                
+                await bot.send_message(chat_id, "🌐 Loading registration gateway...")
+                
                 try:
-                    await page.screenshot(path=ss_path, full_page=False, timeout=5000)
+                    # Timeout ko thoda optimize kiya hai network fluctuations ke liye
+                    await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="load", timeout=45000)
+                except Exception as net_err:
+                    raise Exception(f"Network/Proxy Timeout: {net_err}")
+                    
+                await asyncio.sleep(3)
+
+                # Mobile View Detection
+                email_instead_btn = page.locator('button:has-text("Sign up with email instead"), span:has-text("Sign up with email")').first
+                if await email_instead_btn.is_visible():
+                    await bot.send_message(chat_id, "📱 Phone layout detected. Switching interface...")
+                    await email_instead_btn.click()
+                    await asyncio.sleep(2)
+
+                target_selector = 'input[name="emailOrPhone"], input[name="email"], input[type="text"]'
+                
+                try:
+                    await page.wait_for_selector(target_selector, state="visible", timeout=15000)
+                except Exception:
+                    try:
+                        await page.screenshot(path=ss_path, full_page=False, timeout=3000)
+                    except Exception as ss_err:
+                        print(f"Screenshot failed: {ss_err}")
+
+                    if os.path.exists(ss_path):
+                        with open(ss_path, "rb") as photo:
+                            await bot.send_photo(chat_id, photo, caption="🚨 Verification element missing.")
+                        os.remove(ss_path)
+                    
+                    page_title = await page.title()
+                    raise Exception(f"Form Element Not Found. Current Title: '{page_title}'")
+
+                # Form input interaction
+                email_field = page.locator(target_selector).first
+                await email_field.click()
+                await human_type(email_field, base_email)
+                await asyncio.sleep(1.5)
+
+                next_btn = page.locator('button[type="submit"], button:has-text("Next"), button:has-text("Sign up")').first
+                await next_btn.click()
+                await bot.send_message(chat_id, "⏳ Sequence triggered. Fetching response interface...")
+                
+                await asyncio.sleep(6)
+                
+                try:
+                    await page.screenshot(path=ss_path, full_page=False, timeout=3000)
                 except Exception as ss_err:
-                    print(f"Error taking error screenshot: {ss_err}")
+                    print(f"Final screenshot failed: {ss_err}")
 
                 if os.path.exists(ss_path):
                     with open(ss_path, "rb") as photo:
-                        await bot.send_photo(chat_id, photo, caption="🚨 Flow blocked. Form element missing. Check snapshot.")
+                        await bot.send_photo(chat_id, photo, caption=f"📩 Result for: {base_email}")
                     os.remove(ss_path)
-                page_title = await page.title()
-                raise Exception(f"Element validation failed. Title: '{page_title}'")
-
-            # Email Input Field Interaction
-            email_field = page.locator(target_selector).first
-            await email_field.click()
-            await human_type(email_field, base_email)
-            await asyncio.sleep(1.5)
-
-            # 🔘 NEXT BUTTON PUSH
-            next_btn = page.locator('button[type="submit"], button:has-text("Next"), button:has-text("Sign up")').first
-            await next_btn.click()
-            await bot.send_message(chat_id, "⏳ 'Next' button clicked. Waiting for security/OTP verification layout...")
-            
-            await asyncio.sleep(6)
-            
-            # 📸 OTP SCREENSHOT REPORT
-            # 🛠️ FIX 2: Timeout aur full_page control yahan bhi set kar diya hai
-            try:
-                await page.screenshot(path=ss_path, full_page=False, timeout=5000)
-            except Exception as ss_err:
-                print(f"Error taking final screenshot: {ss_err}")
-
-            if os.path.exists(ss_path):
-                with open(ss_path, "rb") as photo:
-                    await bot.send_photo(
-                        chat_id, 
-                        photo, 
-                        caption=f"📩 Target Processed: {base_email}\nNext page sequence captured (OTP / Status Screen Check) 👇"
-                    )
-                os.remove(ss_path)
-
-            await browser.close()
 
     except Exception as e:
+        print(f"Worker Error: {e}")
         try:
             await bot.send_message(chat_id, f"🚨 Execution Exception:\n`{str(e)}`")
         except Exception as telegram_error:
-            print(f"Telegram report failed: {telegram_error}")
-        finally:
-            if os.path.exists(ss_path):
+            print(f"Telegram reporting failed: {telegram_error}")
+    finally:
+        if os.path.exists(ss_path):
+            try:
                 os.remove(ss_path)
+            except Exception:
+                pass
 
 @bot.message_handler(func=lambda message: "@" in message.text)
 async def start_automation(message):
     email = message.text.strip()
-    asyncio.create_task(create_insta_account(message.chat.id, email))
+    # Task reference store karna acchi practice hai taaki unhandled garbage collect na ho
+    task = asyncio.create_task(create_insta_account(message.chat.id, email))
+    
+    # Optional: background task error tracking ke liye callback
+    def handle_result(t):
+        try:
+            t.result()
+        except Exception as ex:
+            print(f"Task generated an unhandled exception: {ex}")
+            
+    task.add_done_callback(handle_result)
 
 @bot.message_handler(commands=['start'])
 async def send_welcome(message):
-    await bot.reply_to(message, "⚡ Engine: ONLINE\nSend base target emails to execute automated sequence.")
+    await bot.reply_to(message, "⚡ Automation Engine: ONLINE\nSend target identifier to execute.")
 
 async def main():
-    print("🤖 Production Engine Active. Polling Telegram backend...")
-    try:
-        await bot.infinity_polling(timeout=60, request_timeout=300)
-    except Exception as e:
-        print(f"Polling crashed: {e}")
-        await asyncio.sleep(5)
+    print("🤖 Polling Telegram backend...")
+    while True:
+        try:
+            await bot.infinity_polling(timeout=60, request_timeout=300)
+        except Exception as e:
+            print(f"Polling crashed, restarting in 5s: {e}")
+            await asyncio.sleep(5)
 
 if __name__ == "__main__":
     try:
