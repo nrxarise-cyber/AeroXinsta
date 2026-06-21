@@ -5,7 +5,7 @@ import sys
 import re
 from telebot.async_telebot import AsyncTeleBot
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+from playwright_stealth import stealth
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
@@ -77,7 +77,9 @@ async def create_insta_account(chat_id, base_email):
                 )
                 
                 page = await context.new_page()
-                await stealth_async(page)
+                
+                # FIX: generic stealth use kiya jo async context me handle ho jata hai
+                await stealth(page)
                 
                 await bot.send_message(chat_id, "🌐 Loading registration gateway...")
                 
