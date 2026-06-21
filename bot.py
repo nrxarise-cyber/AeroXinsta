@@ -105,19 +105,41 @@ async def create_insta_account(chat_id, base_email):
 
             await bot.send_message(chat_id, f"✍️ Details fill kar raha hoon...\nUser: {username}")
 
+            # --- NAYA MOBILE-VIEW AND EMAIL SWITCH LOGIC ---
             try:
-                email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"]', timeout=20000)
+                # Pehle check karte hain agar direct email box dikh jaye
+                email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"]', timeout=5000)
                 await email_input.click()
                 await human_type(email_input, base_email)
-            except Exception as select_err:
-                screenshot_path = f"error_{chat_id}.png"
-                await page.screenshot(path=screenshot_path, full_page=True)
-                with open(screenshot_path, "rb") as photo:
-                    await bot.send_photo(chat_id, photo, caption="❌ Input box nahi mila. Screen par yeh dikh raha hai!")
-                if os.path.exists(screenshot_path):
-                    os.remove(screenshot_path)
-                raise select_err
+            except Exception:
+                try:
+                    # Agar nahi mila, toh matlab mobile view par "Sign up with email" par click karna padega
+                    await bot.send_message(chat_id, "🔗 Mobile view detected! Switching to Email sign-up tab...")
+                    
+                    # Alag-alag tarike se text ya button dhoond raha hai (Taaki miss na ho)
+                    switch_to_email_btn = await page.wait_for_selector(
+                        'role=button[name=/Sign up with email/i], text="Sign up with email", text="Use email instead"', 
+                        timeout=8000
+                    )
+                    await switch_to_email_btn.click()
+                    await asyncio.sleep(2) # Chhota sa pause tab change hone ke liye
+                    
+                    # Ab firse email box dhoondte hain
+                    email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"], input[type="text"]', timeout=10000)
+                    await email_input.click()
+                    await human_type(email_input, base_email)
+                    
+                except Exception as select_err:
+                    # Agar ab bhi fail ho toh hi screenshot bhejega
+                    screenshot_path = f"error_{chat_id}.png"
+                    await page.screenshot(path=screenshot_path, full_page=True)
+                    with open(screenshot_path, "rb") as photo:
+                        await bot.send_photo(chat_id, photo, caption="❌ Tab badal nahi paya ya box abhi bhi nahi mila!")
+                    if os.path.exists(screenshot_path):
+                        os.remove(screenshot_path)
+                    raise select_err
 
+            # --- BAAKI DETAILS FILL KARNA ---
             name_input = await page.wait_for_selector('input[name="fullName"]', timeout=10000)
             await name_input.click()
             await human_type(name_input, "Rockstar Bhai")
