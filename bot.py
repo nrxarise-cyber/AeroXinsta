@@ -5,36 +5,180 @@ import sys
 import re
 from telebot.async_telebot import AsyncTeleBot
 from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async  # Anti-detection extension
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 if not BOT_TOKEN:
-    print("🚨 ERROR: BOT_TOKEN environment variable missing!")
+    print("🚨 ERROR: BOT_TOKEN missing!")
     sys.exit(1)
 
 bot = AsyncTeleBot(BOT_TOKEN)
-
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 PROXY_FILE = "proxies.txt"
+
+# Modernized Real User-Agent String
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 
 def get_parsed_proxy():
     if not os.path.exists(PROXY_FILE):
         return None
-        
     with open(PROXY_FILE, "r") as f:
         proxies = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-    
     if not proxies:
         return None
-        
+    
     raw_proxy = random.choice(proxies)
     match = re.match(r'(?:https?://)?(?:([^:]+):([^@]+)@)?([^:]+):(\d+)', raw_proxy)
-    
     if match:
         username, password, ip, port = match.groups()
         proxy_config = {"server": f"http://{ip}:{port}"}
         if username and password:
             proxy_config["username"] = username
+            proxy_config["password"] = password
+        return proxy_config
+    return {"server": raw_proxy}
+
+async def human_type(element, text):
+    try:
+        for char in text:
+            await element.type(char)
+            await asyncio.sleep(random.uniform(0.15, 0.3))
+    except Exception as e:
+        print(f"Typing interaction error: {e}")
+
+async def process_target_flow(chat_id, target_input):
+    ss_path = f"ss_{chat_id}.png"
+    await bot.send_message(chat_id, "⚙️ Initializing network configuration and stealth layer...")
+    
+    try:
+        async with async_playwright() as p:
+            launch_args = {
+                "headless": True,
+                "args": [
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-dev-shm-usage",
+                    "--disable-web-security" # Multi-domain handling optimize karne ke liye
+                ]
+            }
+            
+            proxy_config = get_parsed_proxy()
+            if proxy_config:
+                launch_args["proxy"] = proxy_config
+                await bot.send_message(chat_id, f"🌐 Proxy Tunnel Established: `{proxy_config['server']}`")
+            else:
+                await bot.send_message(chat_id, "⚠️ Warning: Operating on host fallback network layout.")
+
+            async with await p.chromium.launch(**launch_args) as browser:
+                context = await browser.new_context(
+                    user_agent=USER_AGENT,
+                    viewport={"width": 1366, "height": 768},
+                    locale="en-US",
+                    timezone_id="America/New_York" # Proxy location se match karne ke liye static standard
+                )
+                
+                page = await context.new_page()
+                
+                # Apply Stealth modifications before routing
+                await stealth_async(page)
+                
+                await bot.send_message(chat_id, "🛰️ Routing request packet to destination...")
+                
+                try:
+                    # 'domcontentloaded' strategy se sirf structural components ka wait hota hai, external dynamic trackers ka nahi
+                    await page.goto(
+                        "https://www.instagram.com/accounts/emailsignup/", 
+                        wait_until="domcontentloaded", 
+                        timeout=50000
+                    )
+                except Exception as net_err:
+                    raise Exception(f"Target Gateway Dropped Connection (Timeout): {net_err}")
+                
+                await asyncio.sleep(4)
+
+                # Responsive Interface Adjustments
+                email_instead_btn = page.locator('button:has-text("Sign up with email instead"), span:has-text("Sign up with email")').first
+                if await email_instead_btn.is_visible():
+                    await email_instead_btn.click()
+                    await asyncio.sleep(2)
+
+                target_selector = 'input[name="emailOrPhone"], input[name="email"], input[type="text"]'
+                
+                try:
+                    await page.wait_for_selector(target_selector, state="visible", timeout=15000)
+                except Exception:
+                    try:
+                        await page.screenshot(path=ss_path, timeout=3000)
+                    except Exception:
+                        pass
+                    
+                    if os.path.exists(ss_path):
+                        with open(ss_path, "rb") as photo:
+                            await bot.send_photo(chat_id, photo, caption="🚨 Elements failed to render on target viewport.")
+                        os.remove(ss_path)
+                    
+                    raise Exception("Target structural validation failed (Form elements hidden/absent).")
+
+                # Action Execution
+                email_field = page.locator(target_selector).first
+                await email_field.click()
+                await human_type(email_field, target_input)
+                await asyncio.sleep(1)
+
+                next_btn = page.locator('button[type="submit"], button:has-text("Next")').first
+                await next_btn.click()
+                await bot.send_message(chat_id, "📦 Data dispatched. Analyzing downstream response sequence...")
+                
+                await asyncio.sleep(6)
+                
+                try:
+                    await page.screenshot(path=ss_path, timeout=3000)
+                except Exception:
+                    pass
+
+                if os.path.exists(ss_path):
+                    with open(ss_path, "rb") as photo:
+                        await bot.send_photo(chat_id, photo, caption=f"🏁 Verification interface snapshot generated.")
+                    os.remove(ss_path)
+
+    except Exception as e:
+        print(f"Flow Exception: {e}")
+        try:
+            await bot.send_message(chat_id, f"🚨 System Execution Interrupted:\n`{str(e)}`")
+        except Exception:
+            pass
+    finally:
+        if os.path.exists(ss_path):
+            try:
+                os.remove(ss_path)
+            except Exception:
+                pass
+
+@bot.message_handler(func=lambda message: "@" in message.text)
+async def start_automation(message):
+    target_input = message.text.strip()
+    task = asyncio.create_task(process_target_flow(message.chat.id, target_input))
+    task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
+
+@bot.message_handler(commands=['start'])
+async def send_welcome(message):
+    await bot.reply_to(message, "⚡ Operations Console: ACTIVE\nProvide identity parameters to initialize routing.")
+
+async def main():
+    print("🤖 Application Engine Online. Listening to polling pipeline...")
+    while True:
+        try:
+            await bot.infinity_polling(timeout=60, request_timeout=300)
+        except Exception as e:
+            print(f"Network pipeline crash, retrying: {e}")
+            await asyncio.sleep(5)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        print("\n🤖 System offline.")            proxy_config["username"] = username
             proxy_config["password"] = password
         return proxy_config
     
