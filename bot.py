@@ -5,7 +5,8 @@ import sys
 import re
 from telebot.async_telebot import AsyncTeleBot
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth
+# FIX: stealth module se specific stealth_sync function import kiya
+from playwright_stealth import stealth_sync
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
@@ -78,8 +79,8 @@ async def create_insta_account(chat_id, base_email):
                 
                 page = await context.new_page()
                 
-                # FIX: generic stealth use kiya jo async context me handle ho jata hai
-                await stealth(page)
+                # FIX: stealth_sync use kiya jo module callable issue ko crash nahi hone deta
+                stealth_sync(page)
                 
                 await bot.send_message(chat_id, "🌐 Loading registration gateway...")
                 
