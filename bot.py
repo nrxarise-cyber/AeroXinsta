@@ -65,25 +65,29 @@ async def create_insta_account(chat_id, base_email):
             await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="networkidle", timeout=45000)
             await asyncio.sleep(5)
 
-            # --- STEP 1: GMAIL ENTER KARNA ---
+            # --- STEP 1: LAYOUT DETECTION & EMAIL ENTER KARNA (FIXED LOGIC) ---
+            
+            # Pehle check karo agar 'Use email instead' ya 'Email' tab dikh raha hai (Layout B)
             try:
-                email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"], input[type="text"]', timeout=7000)
-                await email_input.click()
-                await human_type(email_input, base_email)
-            except Exception:
-                await bot.send_message(chat_id, "🔄 Switching layout to Email input...")
-                # FIXED: Removed await from page.locator
-                switch_to_email_btn = page.locator('text=/Sign up with email|Use email instead|email/i').first
-                await switch_to_email_btn.wait_for(state="visible", timeout=5000)
-                await switch_to_email_btn.click()
-                await asyncio.sleep(3)
+                # Text content matches for "Use email instead" or "Sign up with email" or exact "Email" text button
+                switch_to_email_btn = page.locator('button:has-text("email"), [role="button"]:has-text("email"), text=/Use email instead|Sign up with email/i').first
                 
-                email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[type="text"]', timeout=5000)
-                await email_input.click()
-                await human_type(email_input, base_email)
+                # Agar button screen par mojud hai toh click karega, nahi toh 3s me skip karega
+                if await switch_to_email_btn.is_visible(timeout=3000):
+                    await bot.send_message(chat_id, "🔄 Email tab view select kar raha hoon...")
+                    await switch_to_email_btn.click()
+                    await asyncio.sleep(2)
+            except Exception:
+                pass # Agar button nahi mila matlab hum already direct input fields wale page par hain (Layout A)
+
+            # Ab input target karo (Dono cases me se kisi ek selector ko pakka dhoond lega)
+            await bot.send_message(chat_id, "✍️ Email address fill kar raha hoon...")
+            email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"], input[type="text"], input[name="email"]', timeout=10000)
+            await email_input.click()
+            await human_type(email_input, base_email)
+            await asyncio.sleep(1)
 
             # Gmail daalne ke baad Next button dabana
-            # FIXED: Removed await from page.locator
             next_btn = page.locator('button[type="submit"], button:has-text("Next"), form button').first
             await next_btn.click()
             await asyncio.sleep(5)
@@ -106,11 +110,10 @@ async def create_insta_account(chat_id, base_email):
                 return
 
             # OTP Input fill karna
-            otp_input = await page.wait_for_selector('input[name="email_confirmation_code"], input[type="number"], input[pattern="[0-9]*"]', timeout=10000)
+            otp_input = await page.wait_for_selector('input[name="email_confirmation_code"], input[type="number"], input[pattern="[0-9]*"], input', timeout=10000)
             await otp_input.click()
             await human_type(otp_input, otp_received)
             
-            # FIXED: Removed await from page.locator
             next_btn = page.locator('button[type="submit"], button:has-text("Next"), form button').first
             await next_btn.click()
             await asyncio.sleep(6)
@@ -123,7 +126,6 @@ async def create_insta_account(chat_id, base_email):
             await pass_input.click()
             await human_type(pass_input, password)
             
-            # FIXED: Removed await from page.locator
             next_btn = page.locator('button[type="submit"], button:has-text("Next"), form button').first
             await next_btn.click()
             await asyncio.sleep(6)
@@ -131,7 +133,6 @@ async def create_insta_account(chat_id, base_email):
             # --- STEP 4: BIRTHDAY SET KARNA ---
             await bot.send_message(chat_id, "🎂 Birthday page bypass kar raha hoon...")
             try:
-                # FIXED: Removed await from page.locator
                 next_btn = page.locator('button[type="submit"], button:has-text("Next"), form button').first
                 await next_btn.click()
                 await asyncio.sleep(6)
@@ -152,7 +153,6 @@ async def create_insta_account(chat_id, base_email):
 
             # Final Sign Up / Next Button
             try:
-                # FIXED: Removed await from page.locator
                 signup_btn = page.locator('button[type="submit"], button:has-text("Sign up"), button:has-text("Next")').first
                 await signup_btn.click()
                 await asyncio.sleep(10)
