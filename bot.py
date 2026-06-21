@@ -9,7 +9,6 @@ bot = AsyncTeleBot(BOT_TOKEN)
 
 USER_AGENT = "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36"
 
-# Advanced session handling updates
 session_tracker = {}
 
 def load_proxies_from_file():
@@ -33,158 +32,59 @@ async def create_insta_account(chat_id, base_email):
         await bot.send_message(chat_id, "⚙️ Phase 1: Reading configuration data...")
         proxy_pool = load_proxies_from_file()
         current_proxy = random.choice(proxy_pool) if proxy_pool else None
-        
         proxy_config = None
         
-        # --- SMART PROXY AUTH PARSING ---
         if current_proxy:
             current_proxy = current_proxy.strip()
             if len(current_proxy.split(":")) == 4:
                 ip, port, user, password = current_proxy.split(":")
-                proxy_config = {
-                    "server": f"http://{ip}:{port}",
-                    "username": user,
-                    "password": password
-                }
-            elif "@" in current_proxy and ":" in current_proxy:
-                try:
-                    auth_part, ip_part = current_proxy.split("@")
-                    user, password = auth_part.split(":")
-                    proxy_config = {
-                        "server": f"http://{ip_part}",
-                        "username": user,
-                        "password": password
-                    }
-                except Exception:
-                    proxy_config = {"server": f"http://{current_proxy}"}
+                proxy_config = {"server": f"http://{ip}:{port}", "username": user, "password": password}
             else:
-                if not current_proxy.startswith("http"):
-                    proxy_config = {"server": f"http://{current_proxy}"}
-                else:
-                    proxy_config = {"server": current_proxy}
+                proxy_config = {"server": current_proxy if current_proxy.startswith("http") else f"http://{current_proxy}"}
 
-        await bot.send_message(chat_id, "🌐 Phase 2: Launching Browser Core on Railway...")
+        await bot.send_message(chat_id, "🌐 Phase 2: Launching Browser...")
         
         async with async_playwright() as p:
             browser = await p.chromium.launch(
                 headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu",
-                    "--single-process"
-                ]
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--single-process"]
             )
             
-            await bot.send_message(chat_id, "📱 Phase 3: Synchronizing residential proxy handshake...")
             context = await browser.new_context(
-                user_agent=USER_AGENT,
-                proxy=proxy_config,
-                viewport={"width": 360, "height": 740},
-                is_mobile=True,
-                has_touch=True,
-                locale="en-US",
-                timezone_id="Asia/Kolkata"
+                user_agent=USER_AGENT, proxy=proxy_config,
+                viewport={"width": 360, "height": 740}, is_mobile=True, has_touch=True,
+                locale="en-US", timezone_id="Asia/Kolkata"
             )
             
             page = await context.new_page()
-            
-            await page.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                window.chrome = { runtime: {} };
-                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
-            """)
+            await page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
 
-            await bot.send_message(chat_id, "🚀 Phase 4: Fetching Instagram register endpoint...")
+            await bot.send_message(chat_id, "🚀 Phase 3: Opening Instagram...")
             await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="networkidle", timeout=45000)
             await asyncio.sleep(5)
 
-            username = "bhai_ka_acc_" + str(random.randint(10000, 99999))
-            password = "KhatarnakPass#" + str(random.randint(100, 999))
-
-            await bot.send_message(chat_id, f"✍️ Details fill kar raha hoon...\nUser: {username}")
-
-            # --- MOBILE-VIEW AND EMAIL SWITCH LOGIC ---
+            # --- STEP 1: GMAIL ENTER KARNA ---
             try:
                 email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[autocomplete="email"]', timeout=5000)
                 await email_input.click()
                 await human_type(email_input, base_email)
             except Exception:
-                try:
-                    await bot.send_message(chat_id, "🔗 Mobile view detected! Switching to Email sign-up tab...")
-                    try:
-                        switch_to_email_btn = await page.wait_for_selector('text="Sign up with email"', timeout=5000)
-                    except Exception:
-                        try:
-                            switch_to_email_btn = await page.wait_for_selector('text="Use email instead"', timeout=5000)
-                        except Exception:
-                            switch_to_email_btn = await page.wait_for_selector('button:has-text("email")', timeout=5000)
-                    
-                    await switch_to_email_btn.click()
-                    await asyncio.sleep(4) # Load hone ke liye thoda aur backup time diya
-                    
-                    email_input = await page.wait_for_selector('input[type="text"], input', timeout=10000)
-                    await email_input.click()
-                    await human_type(email_input, base_email)
-                    
-                except Exception as select_err:
-                    screenshot_path = f"error_{chat_id}.png"
-                    await page.screenshot(path=screenshot_path, full_page=True)
-                    with open(screenshot_path, "rb") as photo:
-                        await bot.send_photo(chat_id, photo, caption="❌ Tab badal nahi paya ya box abhi bhi nahi mila!")
-                    if os.path.exists(screenshot_path):
-                        os.remove(screenshot_path)
-                    raise select_err
+                # Mobile view tab switch
+                switch_to_email_btn = await page.wait_for_selector('text="Sign up with email", text="Use email instead", button:has-text("email")', timeout=5000)
+                await switch_to_email_btn.click()
+                await asyncio.sleep(3)
+                email_input = await page.wait_for_selector('input[type="text"], input', timeout=5000)
+                await email_input.click()
+                await human_type(email_input, base_email)
 
-            # --- GMAIL SUBMIT KARNE KE LIYE NEXT BUTTON (IF REQUIRED) ---
-            try:
-                # Agar email daalne ke baad "Next" daba kar details wala page aata hai
-                next_btn = await page.wait_for_selector('button:has-text("Next"), button[type="submit"]', timeout=5000)
-                await next_btn.click()
-                await asyncio.sleep(4)
-            except Exception:
-                # Agar direct usi page par details hain toh bina click aage badhega
-                pass
-
-            # --- BAAKI DETAILS FILL KARNA (ULTRA SAFE LOGIC) ---
-            try:
-                # Full Name dhoondne ke alag alag tarike
-                name_input = await page.wait_for_selector('input[name="fullName"], input[placeholder*="Name"], input[placeholder*="name"]', timeout=12000)
-                await name_input.click()
-                await human_type(name_input, "Rockstar Bhai")
-
-                user_input = await page.wait_for_selector('input[name="username"], input[placeholder*="Username"], input[placeholder*="username"]', timeout=8000)
-                await user_input.click()
-                await human_type(user_input, username)
-
-                pass_input = await page.wait_for_selector('input[name="password"], input[type="password"]', timeout=8000)
-                await pass_input.click()
-                await human_type(pass_input, password)
-                
-            except Exception as details_err:
-                # Agar details wale inputs me se kuch na mile toh screenshot bheje
-                screenshot_path = f"error_details_{chat_id}.png"
-                await page.screenshot(path=screenshot_path, full_page=True)
-                with open(screenshot_path, "rb") as photo:
-                    await bot.send_photo(chat_id, photo, caption="❌ Name/Pass box nahi mila. Screen check karo lala!")
-                if os.path.exists(screenshot_path):
-                    os.remove(screenshot_path)
-                raise details_err
-
-            await asyncio.sleep(2)
-            signup_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Sign up"), button:has-text("Next")', timeout=15000)
-            await signup_btn.click()
-            
+            # Gmail daalne ke baad Next button dabana
+            next_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Next"), form button', timeout=5000)
+            await next_btn.click()
             await asyncio.sleep(5)
-            
-            if "challenge" in page.url or "checkpoint" in page.url:
-                await bot.send_message(chat_id, "⚠️ Account flagged! Change proxy IP pool rotation settings.")
-                await browser.close()
-                return
 
+            # --- STEP 2: OTP SELECTION & WAITING ---
             await bot.send_message(chat_id, "📩 Code bhej diya hai lala! Jaldi se sirf OTP code likh kar bhejo.")
-
+            
             event = asyncio.Event()
             session_tracker[chat_id] = {"event": event, "otp": None}
 
@@ -199,20 +99,77 @@ async def create_insta_account(chat_id, base_email):
                 await browser.close()
                 return
 
-            otp_input = await page.wait_for_selector('input[name="email_confirmation_code"], input[type="num"], input[placeholder*="Code"]', timeout=15000)
+            # OTP Input fill karna
+            otp_input = await page.wait_for_selector('input[name="email_confirmation_code"], input[type="num"], input', timeout=10000)
             await otp_input.click()
             await human_type(otp_input, otp_received)
-            await asyncio.sleep(1.5)
             
-            confirm_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Next")', timeout=10000)
-            await confirm_btn.click()
+            next_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Next"), form button', timeout=5000)
+            await next_btn.click()
+            await asyncio.sleep(6)
+
+            # --- STEP 3: PASSWORD SET KARNA ---
+            await bot.send_message(chat_id, "🔑 Password set kar raha hoon...")
+            password = "KhatarnakPass#" + str(random.randint(111, 999))
             
-            await asyncio.sleep(10)
+            pass_input = await page.wait_for_selector('input[type="password"], input[name="password"]', timeout=10000)
+            await pass_input.click()
+            await human_type(pass_input, password)
+            
+            next_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Next"), form button', timeout=5000)
+            await next_btn.click()
+            await asyncio.sleep(6)
+
+            # --- STEP 4: BIRTHDAY SET KARNA (BYPASS USING ARROWS/NEXT) ---
+            await bot.send_message(chat_id, "🎂 Birthday page bypass kar raha hoon...")
+            try:
+                # Instagram bday page par default bday set rehta hai, bas Next dabana hota hai
+                next_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Next"), form button', timeout=10000)
+                await next_btn.click()
+                await asyncio.sleep(6)
+            except Exception:
+                pass
+
+            # --- STEP 5: USERNAME SET KARNA ---
+            await bot.send_message(chat_id, "👤 Username handle add kar raha hoon...")
+            username = "bhai_ka_acc_" + str(random.randint(10000, 99999))
+            try:
+                # Agar automatic username nahi liya aur input box khula hai
+                user_input = await page.wait_for_selector('input[name="username"], input[type="text"]', timeout=5000)
+                await user_input.click()
+                # Purana kuch likha ho toh clear karne ke liye select_all then backspace
+                await page.keyboard.press("Control+A")
+                await page.keyboard.press("Backspace")
+                await human_type(user_input, username)
+            except Exception:
+                pass # Agar Instagram ne khud hi randomly choose kar liya ho
+
+            # Final Sign Up / Next Button
+            try:
+                signup_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Sign up"), button:has-text("Next"), form button', timeout=10000)
+                await signup_btn.click()
+                await asyncio.sleep(10)
+            except Exception:
+                pass
+
+            if "challenge" in page.url or "checkpoint" in page.url:
+                await bot.send_message(chat_id, "⚠️ Account flagged! Change proxy IP pool rotation settings.")
+                await browser.close()
+                return
+
             await bot.send_message(chat_id, f"🔥 Boom! Account Taiyar:\n👤 User: {username}\n🔑 Pass: {password}")
             await browser.close()
 
     except Exception as e:
-        await bot.send_message(chat_id, f"🚨 ENGINE FAILURE SYSTEM REPORT:\n`{str(e)}`", parse_mode="Markdown")
+        # Error aane par screenshot check karne ke liye safe system
+        try:
+            screenshot_path = f"error_final_{chat_id}.png"
+            await page.screenshot(path=screenshot_path, full_page=True)
+            with open(screenshot_path, "rb") as photo:
+                await bot.send_photo(chat_id, photo, caption=f"🚨 Engine Ruled Out Here:\n`{str(e)}`")
+            if os.path.exists(screenshot_path): os.remove(screenshot_path)
+        except Exception:
+            await bot.send_message(chat_id, f"🚨 CRITICAL SYSTEM ERROR:\n`{str(e)}`")
     finally:
         session_tracker.pop(chat_id, None)
 
