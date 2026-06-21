@@ -170,4 +170,14 @@ async def start_automation(message):
     asyncio.create_task(create_insta_account(message.chat.id, email))
 
 if __name__ == "__main__":
-    asyncio.run(bot.polling(non_stop=True))
+    import time
+    
+    while True:
+        try:
+            print("🤖 Bot is starting cleanly...")
+            # infinity_polling automated restarts ko smoothly handle karta hai
+            asyncio.run(bot.infinity_polling(timeout=60, long_polling_timeout=30))
+        except Exception as e:
+            print(f"⚠️ Polling connection conflict: {e}")
+            print("⏳ Waiting 20 seconds for Telegram to clear old session...")
+            time.sleep(20) # Yeh Railway ko thanda rakhega
