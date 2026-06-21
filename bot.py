@@ -4,93 +4,118 @@ import os
 from telebot.async_telebot import AsyncTeleBot
 from playwright.async_api import async_playwright
 
-# Railway ke Environment Variables se token uthayenge
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = AsyncTeleBot(BOT_TOKEN)
 
-USER_AGENT = "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+USER_AGENT = "Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Mobile Safari/537.36"
 
-# Global dictionary to keep track of waiting OTPs per chat session
 waiting_for_otp = {}
 
 def load_proxies_from_file():
-    """Repo ke andar se proxies.txt file read karne ke liye function"""
     file_path = "proxies.txt"
     proxies = []
-    
     if os.path.exists(file_path):
         with open(file_path, "r") as f:
             for line in f:
                 line = line.strip()
-                # Khali lines ya comment (#) ko skip karne ke liye
                 if line and not line.startswith("#"):
                     proxies.append(line)
-        print(f"📦 Repo se total {len(proxies)} proxies load ho gayi hain.")
-    else:
-        print("⚠️ proxies.txt file nahi mili! Bina proxy ke chal raha hai.")
-        
     return proxies
 
 async def human_type(element, text):
     for char in text:
         await element.type(char)
-        await asyncio.sleep(random.uniform(0.1, 0.3))
+        await asyncio.sleep(random.uniform(0.15, 0.35))  # Thoda zyada natural delay
 
 async def create_insta_account(chat_id, base_email):
     async with async_playwright() as p:
-        # Har baar function chalne par file se fresh proxies load karega
         proxy_pool = load_proxies_from_file()
         current_proxy = random.choice(proxy_pool) if proxy_pool else None
         proxy_config = {"server": current_proxy} if current_proxy else None
 
-        if current_proxy:
-            await bot.send_message(chat_id, f"🤖 Proxy Connected: {current_proxy.split('@')[-1] if '@' in current_proxy else current_proxy}")
-        else:
-            await bot.send_message(chat_id, "⚠️ Warning: Bina proxy ke browser start ho raha hai!")
+        await bot.send_message(chat_id, "🤖 Engine start ho raha hai...")
 
-        # Server par headless=True hi chalega
-        browser = await p.chromium.launch(headless=True)
+        # STEALTH ARGS: Browser ko undetectable banane ke liye extra arguments
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-infobars",
+                "--window-position=0,0",
+                "--ignore-certificate-errors"
+            ]
+        )
         
         context = await browser.new_context(
             user_agent=USER_AGENT,
             viewport={"width": 360, "height": 740},
             is_mobile=True,
             has_touch=True,
-            proxy=proxy_config
+            proxy=proxy_config,
+            locale="en-US",
+            timezone_id="Asia/Kolkata"
         )
         
         page = await context.new_page()
-        await page.add_init_script("delete navigator.__proto__.webdriver;")
+        
+        # Super Stealth: Webdriver detect hone se bachane ke liye advanced bypass
+        await page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            window.chrome = { runtime: {} };
+            Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+        """)
 
         try:
-            await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="networkidle", timeout=60000)
-            await asyncio.sleep(3)
+            await bot.send_message(chat_id, "🌐 Instagram Signup Page par jaa raha hoon...")
+            await page.goto("https://www.instagram.com/accounts/emailsignup/", wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(random.uniform(4, 6)) # Natural wait
 
             username = "bhai_ka_acc_" + str(random.randint(10000, 99999))
             password = "KhatarnakPass#" + str(random.randint(100, 999))
 
             await bot.send_message(chat_id, f"✍️ Details fill kar raha hoon...\nUser: {username}")
 
-            email_input = await page.wait_for_selector('input[name="emailOrPhone"]', timeout=15000)
+            # Instagram ke badalte hue selectors ke liye backup selectors use kiye hain
+            email_input = await page.wait_for_selector('input[name="emailOrPhone"], input[type="text"]', timeout=20000)
+            await email_input.click() # Pehle click karo jaise insan karta hai
+            await asyncio.sleep(0.5)
             await human_type(email_input, base_email)
 
             name_input = await page.wait_for_selector('input[name="fullName"]')
+            await name_input.click()
+            await asyncio.sleep(0.5)
             await human_type(name_input, "Rockstar Bhai")
 
             user_input = await page.wait_for_selector('input[name="username"]')
+            await user_input.click()
+            await asyncio.sleep(0.5)
             await human_type(user_input, username)
 
             pass_input = await page.wait_for_selector('input[name="password"]')
+            await pass_input.click()
+            await asyncio.sleep(0.5)
             await human_type(pass_input, password)
 
-            signup_btn = await page.wait_for_selector('button[type="submit"]')
+            await asyncio.sleep(2)
+            
+            # Submit button dhoondhne ka advanced tareeka
+            signup_btn = await page.wait_for_selector('button[type="submit"], button:has-text("Sign up")', timeout=15000)
             await signup_btn.click()
             
-            await bot.send_message(chat_id, "📩 Insta ne OTP bhej diya! Jaldi se sirf OTP code likh kar bhejo.")
-
-            # Session register karo ki hum OTP ka wait kar rahe hain
-            waiting_for_otp[chat_id] = None
+            await asyncio.sleep(5)
             
+            # Check if blocked or challenged right away
+            if "challenge" in page.url or "checkpoint" in page.url:
+                await bot.send_message(chat_id, "⚠️ Oops! Instagram ne Robot/Captcha challenge de diya. Proxy change karni padegi.")
+                await browser.close()
+                return
+
+            await bot.send_message(chat_id, "📩 Code bhej diya hai lala! Jaldi se sirf OTP code likh kar bhejo.")
+
+            waiting_for_otp[chat_id] = None
             otp_received = None
             for _ in range(60):
                 if waiting_for_otp.get(chat_id) is not None:
@@ -98,7 +123,6 @@ async def create_insta_account(chat_id, base_email):
                     break
                 await asyncio.sleep(1)
 
-            # Session clear karo
             if chat_id in waiting_for_otp:
                 del waiting_for_otp[chat_id]
 
@@ -107,17 +131,26 @@ async def create_insta_account(chat_id, base_email):
                 await browser.close()
                 return
 
-            otp_input = await page.wait_for_selector('input[name="email_confirmation_code"]', timeout=10000)
+            otp_input = await page.wait_for_selector('input[name="email_confirmation_code"], input[type="num"]', timeout=15000)
+            await otp_input.click()
             await human_type(otp_input, otp_received)
+            await asyncio.sleep(1.5)
             
             confirm_btn = await page.wait_for_selector('button[type="submit"]')
             await confirm_btn.click()
             
-            await asyncio.sleep(8)
+            await asyncio.sleep(10)
             await bot.send_message(chat_id, f"🔥 Boom! Account Taiyar:\n👤 User: {username}\n🔑 Pass: {password}")
 
         except Exception as e:
-            await bot.send_message(chat_id, f"⚠️ Error aa gaya lala: {str(e)}")
+            # Agar fail ho jaye toh screen ka screenshot lelo samajhne ke liye (Railway par debug ke liye best hai)
+            try:
+                await page.screenshot(path=f"error_{chat_id}.png")
+                with open(f"error_{chat_id}.png", "rb") as photo:
+                    await bot.send_photo(chat_id, photo, caption=f"⚠️ Error ke waqt screen aisi dikh rahi thi: {str(e)}")
+                os.remove(f"error_{chat_id}.png")
+            except:
+                await bot.send_message(chat_id, f"⚠️ Error aa gaya lala: {str(e)}")
         
         finally:
             await browser.close()
@@ -129,14 +162,12 @@ async def send_welcome(message):
 @bot.message_handler(func=lambda message: message.chat.id in waiting_for_otp and message.text.isdigit())
 async def capture_otp(message):
     waiting_for_otp[message.chat.id] = message.text.strip()
-    await bot.reply_to(message, "🔄 OTP mil gaya! Fill kar raha hoon...")
+    await bot.reply_to(message, "🔄 OTP mil gaya! Verify kar raha hoon...")
 
 @bot.message_handler(func=lambda message: "@" in message.text)
 async def start_automation(message):
     email = message.text.strip()
-    # Task ko background mein daal rahe hain taaki bot crash ya freeze na ho
     asyncio.create_task(create_insta_account(message.chat.id, email))
 
 if __name__ == "__main__":
-    print("Bot is polling on Railway with Async Architecture...")
     asyncio.run(bot.polling(non_stop=True))
