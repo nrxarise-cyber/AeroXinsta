@@ -24,7 +24,6 @@ def get_parsed_proxy():
         return None
         
     with open(PROXY_FILE, "r") as f:
-        # Khali lines aur comments (#) ko filter out karne ke liye
         proxies = [line.strip() for line in f if line.strip() and not line.startswith("#")]
     
     if not proxies:
@@ -32,7 +31,6 @@ def get_parsed_proxy():
         
     raw_proxy = random.choice(proxies)
     
-    # Regex formula: http://user:pass@ip:port ya http://ip:port dono ko parse karne ke liye
     match = re.match(r'(?:https?://)?(?:([^:]+):([^@]+)@)?([^:]+):(\d+)', raw_proxy)
     
     if match:
@@ -71,11 +69,10 @@ async def create_insta_account(chat_id, base_email):
                 ]
             }
             
-            # 🔄 PROXY LOADING LOGIC
+            # PROXY LOADING LOGIC
             proxy_config = get_parsed_proxy()
             if proxy_config:
                 launch_args["proxy"] = proxy_config
-                # Safe log formatting: Telegram par user/pass leak na ho, sirf IP:Port dikhe
                 clean_server = proxy_config["server"].split('@')[-1]
                 await bot.send_message(chat_id, f"🌐 Proxy Authenticated & Loaded: `{clean_server}`")
             else:
@@ -89,7 +86,6 @@ async def create_insta_account(chat_id, base_email):
                 locale="en-US"
             )
             
-            # Webdriver fingerprint bypass script inject karna
             await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
             page = await context.new_page()
             
@@ -114,8 +110,12 @@ async def create_insta_account(chat_id, base_email):
             try:
                 await page.wait_for_selector(target_selector, state="visible", timeout=20000)
             except Exception:
-                # Agar element na mile toh instant screenshot bhej kar block error dena
-                await page.screenshot(path=ss_path, full_page=True)
+                # 🛠️ FIX 1: Timeout aur full_page control lagaya taaki fonts par na atke
+                try:
+                    await page.screenshot(path=ss_path, full_page=False, timeout=5000)
+                except Exception as ss_err:
+                    print(f"Error taking error screenshot: {ss_err}")
+
                 if os.path.exists(ss_path):
                     with open(ss_path, "rb") as photo:
                         await bot.send_photo(chat_id, photo, caption="🚨 Flow blocked. Form element missing. Check snapshot.")
@@ -134,11 +134,15 @@ async def create_insta_account(chat_id, base_email):
             await next_btn.click()
             await bot.send_message(chat_id, "⏳ 'Next' button clicked. Waiting for security/OTP verification layout...")
             
-            # OTP screen transition ke liye safe waiting gap
             await asyncio.sleep(6)
             
             # 📸 OTP SCREENSHOT REPORT
-            await page.screenshot(path=ss_path, full_page=True)
+            # 🛠️ FIX 2: Timeout aur full_page control yahan bhi set kar diya hai
+            try:
+                await page.screenshot(path=ss_path, full_page=False, timeout=5000)
+            except Exception as ss_err:
+                print(f"Error taking final screenshot: {ss_err}")
+
             if os.path.exists(ss_path):
                 with open(ss_path, "rb") as photo:
                     await bot.send_photo(
@@ -156,7 +160,6 @@ async def create_insta_account(chat_id, base_email):
         except Exception as telegram_error:
             print(f"Telegram report failed: {telegram_error}")
         finally:
-            # File system cleanup safeguard
             if os.path.exists(ss_path):
                 os.remove(ss_path)
 
